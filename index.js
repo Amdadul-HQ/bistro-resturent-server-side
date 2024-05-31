@@ -74,6 +74,68 @@ async function run() {
       next()
     }
 
+    // Admin states 
+    app.get('/admin-states',async (req,res) => {
+      const users = await usersCollection.estimatedDocumentCount()
+      const menuItems = await menuCollection.estimatedDocumentCount()
+      const orders = await paymentCollection.estimatedDocumentCount()
+
+      const result = await paymentCollection.aggregate([
+        {
+          $group:{
+            _id:null,
+            totalRevenue:{
+              $sum:'$totalPrice'
+            }
+          }
+        }
+      ]).toArray()
+      const totalRevenue = result.length> 0 ? result[0].totalRevenue : 0
+
+      res.send({users,menuItems,orders,totalRevenue})
+    })
+
+    // order states
+    app.get('/order-states',async(req,res)=>{
+      const result = await paymentCollection.aggregate([
+        {
+          $unwind:'$menuItemId'
+        },
+        {
+          $lookup:{
+            from:'menu',
+            localField:'menuItemId',
+            foreignField:'_id',
+            as:'menuItems'
+          }
+        },
+        {
+          $unwind:'$menuItems'
+        },
+        {
+          $group:{
+            _id:'$menuItems.category',
+            quantity:{
+              $sum: 1
+            },
+            revenue:{
+              $sum:'$menuItems.price'
+            }
+          },
+        },
+        {
+          $project:{
+            _id:0,
+            category:'$_id',
+            quantity:'$quantity',
+            totalRevenue:'$revenue'
+          }
+        }
+      ]).toArray()
+
+      res.send(result)
+    })
+
     // payment api 
     app.post('/create-payment-intent', async (req, res) =>{
       const {price} = req.body
